@@ -1,0 +1,28 @@
+README for stneatexperiment
+
+This program is used to run experiments with SuperTux + NEAT in parallel using GNU parallel.
+To build, create a folder called "build" in the project's directory. Switch to the folder and call "cmake .." and then "make" to compile.
+Afterwards, create a folder called "bin" inside of "build" and place the contents of the supertuxNEAT project inside. Build just like with this project and you're good to go.
+The final path to the supertux2 executable should look like this: "<stneatexperimentfolder>/build/bin/build/supertux2".
+
+Boost is required to run/compile this project. Supertux itself also has a few dependencies which you can check out in the official docs.
+
+Following is a list of available parameters for experiment parameter files:
+
+maxgens <int>			Number of generations for which the simulation will run
+
+numcores <int>			Number of processes that are to be started, distributed on CPU's cores by GNU parallel
+
+randseed <int>			Seed to be used by MultiNEAT
+
+numhiddenstartneurons <int>	Amount of hidden neurons the initial genome should have
+
+numrangesensors <int>		Number of rangefinder sensors
+lengthrangesensors <int>	Length of rangefinder sensors
+
+numdepthsensors <int>		Number of depthfinder sensors
+spacingdepthsensors <int>	Spacing between depthfinder sensors
+lengthdepthsensors <int>	Length of depthfinder sensors
+
+numpiesensors <int>		Number of pieslice sensors to the right of Tux
+radiuspieslicesensors <int>	Radius of pieslice sensors
