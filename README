@@ -4,7 +4,7 @@ To build, create a folder called "build" in the project's directory. Switch to t
 Afterwards, create a folder called "bin" inside of "build" and place the contents of the supertuxNEAT project inside. Build just like with this project and you're good to go.
 The final path to the supertux2 executable should look like this: "<stneatexperimentfolder>/build/bin/build/supertux2".
 
-Boost is required to run/compile this project. Supertux itself also has a few dependencies which you can check out in the official docs.
+Boost and sqlite3 are required to run/compile this project. Supertux itself also has a few dependencies which you can check out in the official docs.
 
 Following is a list of available parameters for experiment parameter files:
 
