@@ -8,20 +8,22 @@ Boost and sqlite3 are required to run/compile this project. Supertux itself also
 
 Following is a list of available parameters for experiment parameter files:
 
-maxgens <int>                 Number of generations for which the simulation will run
+maxgens <int> | Number of generations for which the simulation will run
 
-numcores <int>			          Number of processes that are to be started, distributed on CPU's cores by GNU parallel
+numcores <int> | Number of processes that are to be started, distributed on CPU's cores by GNU parallel
 
-randseed <int>			          Seed to be used by MultiNEAT. This will override the seed given by "--seed".
+randseed <int> | Seed to be used by MultiNEAT. This will override the seed given by "--seed".
 
-numhiddenstartneurons <int>	  Amount of hidden neurons the initial genome should have
+numhiddenstartneurons <int> | Amount of hidden neurons the initial genome should have
 
-numrangesensors <int>		      Number of rangefinder sensors
-lengthrangesensors <int>	    Length of rangefinder sensors
+numrangesensors <int> | Number of rangefinder sensors
+lengthrangesensors <int> | Length of rangefinder sensors
 
-numdepthsensors <int>		      Number of depthfinder sensors
-spacingdepthsensors <int>	    Spacing between depthfinder sensors
-lengthdepthsensors <int>	    Length of depthfinder sensors
+numdepthsensors <int> | Number of depthfinder sensors
+spacingdepthsensors <int> | Spacing between depthfinder sensors
+lengthdepthsensors <int> | Length of depthfinder sensors
 
-numpiesensors <int>		        Number of pieslice sensors to the right of Tux
-radiuspieslicesensors <int>	  Radius of pieslice sensors
+numpiesensors <int> | Number of pieslice sensors to the right of Tux
+radiuspieslicesensors <int> | Radius of pieslice sensors
+
+It's recommended to use 5 rangefinder sensors as that's the height Tux can jump up to and an odd number of pie slice sensors so Tux' front is detected properly.
