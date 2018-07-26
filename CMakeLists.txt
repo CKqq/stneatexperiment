@@ -29,7 +29,7 @@ endif()
 
 message( "CMAKE_CXX_FLAGS IS ${CMAKE_CXX_FLAGS}" )
 
-add_executable(stneatexperiment multineat/Substrate.cpp multineat/Parameters.cpp multineat/Utils.cpp multineat/NeuralNetwork.cpp multineat/PhenotypeBehavior.cpp multineat/Genome.cpp multineat/Random.cpp multineat/Innovation.cpp multineat/Species.cpp multineat/Population.cpp experiment.cpp)
+add_executable(stneatexperiment multineat/Substrate.cpp multineat/Parameters.cpp multineat/Utils.cpp multineat/NeuralNetwork.cpp multineat/PhenotypeBehavior.cpp multineat/Genome.cpp multineat/Random.cpp multineat/Innovation.cpp multineat/Species.cpp multineat/Population.cpp experiment.cpp multineat/Behavior.cpp)
 
 target_link_libraries(stneatexperiment ${Boost_LIBRARIES} ${SQLITE3_LIBRARIES})
 

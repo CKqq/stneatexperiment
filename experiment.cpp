@@ -14,6 +14,8 @@
 
 #include "experiment.hpp"
 
+#include <signal.h>
+
 string Experiment::temp_pop_filename = "temp_pop";
 
 string Experiment::db_filename = "neat.db";
@@ -45,11 +47,16 @@ int Experiment::num_pieslice_sensors = 7;
 
 int Experiment::num_hidden_start_neurons = 0;
 
+bool Experiment::ns = false;
+
 Parameters Experiment::params;
 
 vector<Genome*> Experiment::genomes;
+vector<Genome*> Experiment::archive;
 
 int main(int argc, char **argv) {  
+  signal(SIGSEGV, Experiment::handler);
+  
   std::cout << "SuperTux + NEAT interface and experiment code by Christoph Kuhfuss 2018" << std::endl;
   std::cout << "Using the original SuperTux source and the MultiNEAT framework by Peter Chervenski (https://github.com/peter-ch/MultiNEAT)" << std::endl;
   
@@ -69,7 +76,7 @@ int main(int argc, char **argv) {
 Experiment::Experiment() : 
 start_genome(0, num_range_sensors + num_depth_sensors + num_pieslice_sensors + 1, num_hidden_start_neurons, 
   6, false, UNSIGNED_SIGMOID, UNSIGNED_SIGMOID, 1, params),
-pop(strcmp(Experiment::pop_filename.c_str(), "") ? 
+  pop(strcmp(Experiment::pop_filename.c_str(), "") ? 
   Population(Experiment::pop_filename.c_str()) : Population(start_genome, params, true, 2.0, (using_seed ? seed : (int) time(0))))
 {
 }
@@ -192,7 +199,7 @@ void Experiment::update_db()
     
   char* err;
   std::stringstream ss;
-  ss << "CREATE TABLE GEN" << cur_gen << "(id INT PRIMARY KEY NOT NULL, fitness REAL);";
+  ss << "CREATE TABLE GEN" << cur_gen << "(id INT PRIMARY KEY NOT NULL, fitness REAL, qLeft REAL, qRight REAL, qUp REAL, qDown REAL, qJump REAL, qAction REAL);";
     
   sqlite3_exec(db, ss.str().c_str(), 0, 0, &err);
   
@@ -200,7 +207,8 @@ void Experiment::update_db()
     ss.str("");
     
     // Negative fitness if not evaluated yet. If fitness values stay negative, NEAT might just break
-    ss << "INSERT INTO GEN" << cur_gen << " VALUES(" << (*it)->GetID() << ", -1);";
+    // Last values are for ns behavior
+    ss << "INSERT INTO GEN" << cur_gen << " VALUES(" << (*it)->GetID() << ", -1, -1, -1, -1, -1, -1, -1);";
     
     sqlite3_exec(db, ss.str().c_str(), 0, 0, &err);
   }
@@ -221,8 +229,11 @@ void Experiment::set_fitness_values()
   std::stringstream ss;
   ss << "SELECT * FROM gen" << cur_gen << ";";
   
-  sqlite3_exec(db, ss.str().c_str(), select_handler, 0, &err);
-    
+  sqlite3_exec(db, ss.str().c_str(), (ns ? select_handler_ns : select_handler), 0, &err);
+  
+  if (ns)
+    update_sparsenesses();
+
   sqlite3_close(db);
 }
 
@@ -292,7 +303,17 @@ void Experiment::parse_commandline_arguments(int argc, char** argv)
     // i.e. start multiple experiments via shellscript
     else if (arg == "--seed")
     {
+      int seed = 0;
       
+      if (i + 1 < argc && sscanf(argv[i + 1], "%d", &seed) == 1) {
+	Experiment::using_seed = true;
+      } else {
+	std::cout << "Please specify a proper seed after '--seed'" << std::endl;
+      }
+    }
+    else if (arg == "--noveltysearch")
+    {
+      Experiment::ns = true;
     }
   }
 }
@@ -336,7 +357,9 @@ void Experiment::parse_experiment_parameters()
     else if (s == "numdepthsensors") 		Experiment::num_depth_sensors = (int) d;
     else if (s == "numpiesensors") 		Experiment::num_pieslice_sensors = (int) d;
     
-    else if (s == "numhiddenstartneurons")		Experiment::num_hidden_start_neurons = (int) d;
+    else if (s == "numhiddenstartneurons")	Experiment::num_hidden_start_neurons = (int) d;
+    
+    else if (s == "noveltysearch" && (int) d)	Experiment::ns = true;
   }
 }
 
@@ -401,7 +424,32 @@ int Experiment::select_handler(void* data, int argc, char** argv, char** colName
   
   for (std::vector<Genome*>::iterator it = genomes.begin(); it != genomes.end(); ++it) {
     if ((*it)->GetID() == id) {
-      (*it)->SetFitness(fitness);
+      (*it)->SetFitness((Experiment::ns) ? sparseness(*it) : fitness);
+      (*it)->SetEvaluated();
+      if (fitness > top_fitness) {
+	top_fitness = fitness;
+	top_genome_id = id;
+      }
+      
+      break;
+    }
+  }
+  
+  return 0;
+}
+
+int Experiment::select_handler_ns(void* data, int argc, char** argv, char** colNames)
+{
+  int id = std::stoi(argv[0]);
+  double fitness = std::stod(argv[1]);
+  
+  for (std::vector<Genome*>::iterator it = genomes.begin(); it != genomes.end(); ++it) {
+    if ((*it)->GetID() == id) {
+      (*it)->m_PhenotypeBehavior = new Behavior();
+      
+      for (int i = 2; i < 8; i++) {
+	(*it)->m_PhenotypeBehavior->m_Data[0].push_back(std::stod(argv[i]));
+      }
       
       if (fitness > top_fitness) {
 	top_fitness = fitness;
@@ -415,6 +463,60 @@ int Experiment::select_handler(void* data, int argc, char** argv, char** colName
   return 0;
 }
 
+double Experiment::sparseness(Genome* g)
+{
+  std::vector<double> distances;
+  
+  double sum = 0;
+  int amt = 0;
+  
+  for (std::vector<Genome*>::iterator it = genomes.begin(); it != genomes.end(); ++it) {
+    amt++;
+    distances.push_back(g->m_PhenotypeBehavior->Distance_To((*it)->m_PhenotypeBehavior));
+  }
+  
+  for (std::vector<Genome*>::iterator it = archive.begin(); it != archive.end(); ++it) {
+    amt++;
+    distances.push_back(g->m_PhenotypeBehavior->Distance_To((*it)->m_PhenotypeBehavior));
+  }
+  
+  sort(distances.begin(), distances.end(), [ ](const double lhs, const double rhs)
+  {
+      return lhs < rhs;
+  });
+  
+  for (int i = 0; i < params.NoveltySearch_K; i++) {
+    sum += distances[i];
+  }
+  
+  std::cout << "Sparseness for genome #" << g->GetID() << " is " << sum / amt << std::endl;
+ 
+  if (amt > 0) {
+    double sparseness = sum / amt;
+    
+    if (sparseness > params.NoveltySearch_P_min) {
+      archive.push_back(g);
+    }
+    
+    return sum / amt;
+  }
+  else
+    return 0;
+}
+
+void Experiment::update_sparsenesses()
+{
+  for (std::vector<Genome*>::iterator it = genomes.begin(); it != genomes.end(); ++it)
+  {    
+    double sparseness = Experiment::sparseness(*it);
+    
+    (*it)->SetFitness(sparseness);
+    (*it)->SetEvaluated();
+  }
+}
+
+
+
 void Experiment::print_usage()
 {
   stringstream ss;
@@ -425,7 +527,10 @@ void Experiment::print_usage()
   ss << "====================================================" << std::endl;
   ss << "--paramfile\t\tMultiNEAT parameter file" << std::endl;
   ss << "--experimentparamfile\tCustom experiment parameter file. Check README for usage" << std::endl;
+  ss << std::endl;
+  ss << "The following arguments can be overriden by the experiment parameter file:" << std::endl;
   ss << "--seed\t\t\tSeed for MultiNEAT" << std::endl;
+  ss << "--noveltysearch\t\tUse Novelty Search instead of objective-based fitness for evolution" << std::endl;
   
   std::cout << ss.str();
 }
