@@ -52,7 +52,7 @@ bool Experiment::ns = false;
 Parameters Experiment::params;
 
 vector<Genome*> Experiment::genomes;
-vector<Genome*> Experiment::archive;
+vector<PhenotypeBehavior> Experiment::archive;
 
 int main(int argc, char **argv) {  
   signal(SIGSEGV, Experiment::handler);
@@ -93,6 +93,15 @@ void Experiment::run_evolution() {
     
     cur_gen = i;
     refresh_genome_list();
+    
+    if (ns) {
+      std::vector<PhenotypeBehavior>* behaviors = new std::vector<PhenotypeBehavior>();
+      
+      for (int i = 0; i < genomes.size(); i++) 
+	behaviors->push_back(Behavior());
+      
+      pop.InitPhenotypeBehaviorData(behaviors, &archive);
+    }
     
     if (autosave_interval != 0 && i % autosave_interval == 0) {
       std::ostringstream ss;
@@ -231,8 +240,14 @@ void Experiment::set_fitness_values()
   
   sqlite3_exec(db, ss.str().c_str(), (ns ? select_handler_ns : select_handler), 0, &err);
   
-  if (ns)
+  if (ns) {
+    for (std::vector<Genome*>::iterator it = genomes.begin(); it != genomes.end(); ++it) {
+      if ((*it)->m_PhenotypeBehavior->m_Data[0].size() == 0) {
+	std::cout << "ERROR OCCURED WITH GENOME #" << (*it)->GetID() << std::endl;
+      }
+    }
     update_sparsenesses();
+  }
 
   sqlite3_close(db);
 }
@@ -245,6 +260,7 @@ void Experiment::refresh_genome_list()
     Species* cur = &pop.m_Species[i];
 //     std::cout << "Species #" << cur->ID() << " has " << cur->m_Individuals.size() << " individuals" << std::endl;
     for (unsigned int j = 0; j < cur->m_Individuals.size(); j++) {
+      cur->m_Individuals[j].m_PhenotypeBehavior = new Behavior();
       genomes.push_back(&cur->m_Individuals[j]);
     }
     
@@ -254,6 +270,106 @@ void Experiment::refresh_genome_list()
       return lhs->GetID() < rhs->GetID();
     });
   }
+}
+
+double Experiment::sparseness(Genome* g)
+{
+  std::vector<double> distances;
+  
+  double sum = 0;
+  int amt = 0;
+  
+  for (std::vector<Genome*>::iterator it = genomes.begin(); it != genomes.end(); ++it) {
+    //std::cout << "Calculating distance between genomes #" << g->GetID() << " and #" << (*it)->GetID() << std::endl;
+    amt++;
+    distances.push_back(g->m_PhenotypeBehavior->Distance_To((*it)->m_PhenotypeBehavior));
+  }
+  
+  for (std::vector<PhenotypeBehavior>::iterator it = archive.begin(); it != archive.end(); ++it) {
+    amt++;
+    distances.push_back(g->m_PhenotypeBehavior->Distance_To(&(*it)));
+  }
+  
+  sort(distances.begin(), distances.end(), [ ](const double lhs, const double rhs)
+  {
+      return lhs < rhs;
+  });
+  
+  for (int i = 0; i < params.NoveltySearch_K; i++) {
+    sum += distances[i];
+  }
+  
+//   std::cout << "Sparseness for genome #" << g->GetID() << " is " << sum / amt << std::endl;
+ 
+  if (amt > 0) {
+    double sparseness = sum / amt;
+    
+    if (sparseness > params.NoveltySearch_P_min) {
+      archive.push_back(*(g->m_PhenotypeBehavior));
+    }
+    
+    return sum / amt;
+  }
+  else
+    return 0;
+}
+
+void Experiment::update_sparsenesses()
+{
+  for (std::vector<Genome*>::iterator it = genomes.begin(); it != genomes.end(); ++it)
+  {    
+//     std::cout << "Updating sparseness of genome #" << (*it)->GetID() << "..." << std::endl;
+//     double sparseness = Experiment::sparseness(*it);
+    
+    (*it)->SetFitness(pop.ComputeSparseness(*(*it)));
+    (*it)->SetEvaluated();
+  }
+}
+
+int Experiment::select_handler(void* data, int argc, char** argv, char** colNames)
+{
+  int id = std::stoi(argv[0]);
+  double fitness = std::stod(argv[1]);
+  
+  for (std::vector<Genome*>::iterator it = genomes.begin(); it != genomes.end(); ++it) {
+    if ((*it)->GetID() == id) {
+      (*it)->SetFitness((Experiment::ns) ? sparseness(*it) : fitness);
+      (*it)->SetEvaluated();
+      if (fitness > top_fitness) {
+	top_fitness = fitness;
+	top_genome_id = id;
+      }
+      
+      break;
+    }
+  }
+  
+  return 0;
+}
+
+int Experiment::select_handler_ns(void* data, int argc, char** argv, char** colNames)
+{
+  int id = std::stoi(argv[0]);
+
+  double fitness = std::stod(argv[1]);
+  
+  for (std::vector<Genome*>::iterator it = genomes.begin(); it != genomes.end(); ++it) {
+    if ((*it)->GetID() == id) {
+            
+      for (int i = 2; i < 8; i++) {
+	(*it)->m_PhenotypeBehavior->m_Data[0][std::stod(argv[i])];
+      }
+	
+      if (fitness > top_fitness) {
+	top_fitness = fitness;
+	top_genome_id = id;
+      }
+      
+      break;
+    }
+  }
+  
+  return 0;
 }
 
 void Experiment::parse_commandline_arguments(int argc, char** argv)
@@ -416,106 +532,6 @@ int Experiment::busy_handler(void *data, int retry)
     return 0;
   }
 }
-
-int Experiment::select_handler(void* data, int argc, char** argv, char** colNames)
-{
-  int id = std::stoi(argv[0]);
-  double fitness = std::stod(argv[1]);
-  
-  for (std::vector<Genome*>::iterator it = genomes.begin(); it != genomes.end(); ++it) {
-    if ((*it)->GetID() == id) {
-      (*it)->SetFitness((Experiment::ns) ? sparseness(*it) : fitness);
-      (*it)->SetEvaluated();
-      if (fitness > top_fitness) {
-	top_fitness = fitness;
-	top_genome_id = id;
-      }
-      
-      break;
-    }
-  }
-  
-  return 0;
-}
-
-int Experiment::select_handler_ns(void* data, int argc, char** argv, char** colNames)
-{
-  int id = std::stoi(argv[0]);
-  double fitness = std::stod(argv[1]);
-  
-  for (std::vector<Genome*>::iterator it = genomes.begin(); it != genomes.end(); ++it) {
-    if ((*it)->GetID() == id) {
-      (*it)->m_PhenotypeBehavior = new Behavior();
-      
-      for (int i = 2; i < 8; i++) {
-	(*it)->m_PhenotypeBehavior->m_Data[0].push_back(std::stod(argv[i]));
-      }
-      
-      if (fitness > top_fitness) {
-	top_fitness = fitness;
-	top_genome_id = id;
-      }
-      
-      break;
-    }
-  }
-  
-  return 0;
-}
-
-double Experiment::sparseness(Genome* g)
-{
-  std::vector<double> distances;
-  
-  double sum = 0;
-  int amt = 0;
-  
-  for (std::vector<Genome*>::iterator it = genomes.begin(); it != genomes.end(); ++it) {
-    amt++;
-    distances.push_back(g->m_PhenotypeBehavior->Distance_To((*it)->m_PhenotypeBehavior));
-  }
-  
-  for (std::vector<Genome*>::iterator it = archive.begin(); it != archive.end(); ++it) {
-    amt++;
-    distances.push_back(g->m_PhenotypeBehavior->Distance_To((*it)->m_PhenotypeBehavior));
-  }
-  
-  sort(distances.begin(), distances.end(), [ ](const double lhs, const double rhs)
-  {
-      return lhs < rhs;
-  });
-  
-  for (int i = 0; i < params.NoveltySearch_K; i++) {
-    sum += distances[i];
-  }
-  
-  std::cout << "Sparseness for genome #" << g->GetID() << " is " << sum / amt << std::endl;
- 
-  if (amt > 0) {
-    double sparseness = sum / amt;
-    
-    if (sparseness > params.NoveltySearch_P_min) {
-      archive.push_back(g);
-    }
-    
-    return sum / amt;
-  }
-  else
-    return 0;
-}
-
-void Experiment::update_sparsenesses()
-{
-  for (std::vector<Genome*>::iterator it = genomes.begin(); it != genomes.end(); ++it)
-  {    
-    double sparseness = Experiment::sparseness(*it);
-    
-    (*it)->SetFitness(sparseness);
-    (*it)->SetEvaluated();
-  }
-}
-
-
 
 void Experiment::print_usage()
 {

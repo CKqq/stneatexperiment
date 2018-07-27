@@ -1156,7 +1156,7 @@ void Population::InitPhenotypeBehaviorData(std::vector< PhenotypeBehavior >* a_p
     // Now make each genome point to its behavior
     a_population->resize(NumGenomes());
     m_BehaviorArchive = a_archive;
-    m_BehaviorArchive->clear();
+//     m_BehaviorArchive->clear();
 
     ASSERT(a_population->size() == NumGenomes());
     int counter = 0;
