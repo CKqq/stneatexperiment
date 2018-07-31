@@ -54,9 +54,7 @@ Parameters Experiment::params;
 vector<Genome*> Experiment::genomes;
 vector<PhenotypeBehavior> Experiment::archive;
 
-int main(int argc, char **argv) {  
-  signal(SIGSEGV, Experiment::handler);
-  
+int main(int argc, char **argv) {
   std::cout << "SuperTux + NEAT interface and experiment code by Christoph Kuhfuss 2018" << std::endl;
   std::cout << "Using the original SuperTux source and the MultiNEAT framework by Peter Chervenski (https://github.com/peter-ch/MultiNEAT)" << std::endl;
   
