@@ -72,7 +72,8 @@ public:
   static int top_genome_id;
   static double top_fitness;
   
-  static bool ns;
+  static bool novelty_search;
+  static bool hyperneat;
   
 private:  
   // Static for db handler access

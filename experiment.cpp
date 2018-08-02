@@ -47,7 +47,8 @@ int Experiment::num_pieslice_sensors = 7;
 
 int Experiment::num_hidden_start_neurons = 0;
 
-bool Experiment::ns = false;
+bool Experiment::novelty_search = false;
+bool Experiment::hyperneat = false;
 
 Parameters Experiment::params;
 
@@ -77,6 +78,29 @@ start_genome(0, num_range_sensors + num_depth_sensors + num_pieslice_sensors + 1
   pop(strcmp(Experiment::pop_filename.c_str(), "") ? 
   Population(Experiment::pop_filename.c_str()) : Population(start_genome, params, true, 2.0, (using_seed ? seed : (int) time(0))))
 {
+  if (hyperneat) 
+  {
+    std::vector<std::vector<double>> inputs;
+    std::vector<std::vector<double>> hidden;
+    std::vector<std::vector<double>> outputs;
+    
+    // Small hack for consistent genome input/output dimensionality
+    inputs = {std::vector<double>()};
+    
+    inputs[0].push_back(0);
+    inputs[0].push_back(0);
+    
+    if (num_hidden_start_neurons > 0)
+      inputs[0].push_back(0);
+    
+    Substrate s = Substrate(inputs, hidden, outputs);
+    
+    start_genome = Genome(0, s.GetMinCPPNInputs(), 0, s.GetMinCPPNOutputs(), false, UNSIGNED_SIGMOID, UNSIGNED_SIGMOID, 1, params);
+    
+    pop = strcmp(Experiment::pop_filename.c_str(), "") ? 
+      Population(Experiment::pop_filename.c_str()) : 
+      Population(start_genome, params, true, 2.0, (using_seed ? seed : (int) time(0)));
+  }
 }
 
 Experiment::~Experiment()
@@ -92,7 +116,7 @@ void Experiment::run_evolution() {
     cur_gen = i;
     refresh_genome_list();
     
-    if (ns) {
+    if (novelty_search) {
       std::vector<PhenotypeBehavior>* behaviors = new std::vector<PhenotypeBehavior>();
       
       for (int i = 0; i < genomes.size(); i++) 
@@ -159,6 +183,9 @@ void Experiment::start_processes()
   ss << "parallel --no-notice --xapply ";
   ss << path_to_supertux_executable;
   ss << " --neat";
+  
+  if (Experiment::novelty_search) ss << " --noveltysearch";
+  if (Experiment::hyperneat) ss << " --hyperneat";
   
   // All child processes read from the same population file
   ss << " --popfile " << boost::filesystem::canonical(temp_pop_filename);
@@ -236,9 +263,9 @@ void Experiment::set_fitness_values()
   std::stringstream ss;
   ss << "SELECT * FROM gen" << cur_gen << ";";
   
-  sqlite3_exec(db, ss.str().c_str(), (ns ? select_handler_ns : select_handler), 0, &err);
+  sqlite3_exec(db, ss.str().c_str(), (novelty_search ? select_handler_ns : select_handler), 0, &err);
   
-  if (ns) {
+  if (novelty_search) {
     for (std::vector<Genome*>::iterator it = genomes.begin(); it != genomes.end(); ++it) {
       if ((*it)->m_PhenotypeBehavior->m_Data[0].size() == 0) {
 	std::cout << "ERROR OCCURED WITH GENOME #" << (*it)->GetID() << std::endl;
@@ -331,7 +358,7 @@ int Experiment::select_handler(void* data, int argc, char** argv, char** colName
   
   for (std::vector<Genome*>::iterator it = genomes.begin(); it != genomes.end(); ++it) {
     if ((*it)->GetID() == id) {
-      (*it)->SetFitness((Experiment::ns) ? sparseness(*it) : fitness);
+      (*it)->SetFitness((Experiment::novelty_search) ? sparseness(*it) : fitness);
       (*it)->SetEvaluated();
       if (fitness > top_fitness) {
 	top_fitness = fitness;
@@ -413,6 +440,7 @@ void Experiment::parse_commandline_arguments(int argc, char** argv)
 	std::cout << "Please specify path to population file after using --popfile" << std::endl;
       }
     }
+    
     // We'll take seeds as a console argument for convenience,
     // i.e. start multiple experiments via shellscript
     else if (arg == "--seed")
@@ -427,7 +455,11 @@ void Experiment::parse_commandline_arguments(int argc, char** argv)
     }
     else if (arg == "--noveltysearch")
     {
-      Experiment::ns = true;
+      Experiment::novelty_search = true;
+    }
+    else if (arg == "--hyperneat")
+    {
+      Experiment::hyperneat = true;
     }
   }
 }
@@ -473,7 +505,8 @@ void Experiment::parse_experiment_parameters()
     
     else if (s == "numhiddenstartneurons")	Experiment::num_hidden_start_neurons = (int) d;
     
-    else if (s == "noveltysearch" && (int) d)	Experiment::ns = true;
+    else if (s == "noveltysearch" && (int) d)	Experiment::novelty_search = true;
+    else if (s == "hyperneat" && (int) d)	Experiment::novelty_search = true;
   }
 }
 
