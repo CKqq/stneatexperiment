@@ -4,7 +4,7 @@ To build, create a folder called "build" in the project's directory. Switch to t
 Afterwards, create a folder called "bin" inside of "build" and place the contents of the supertuxNEAT project inside. Build just like with this project and you're good to go.
 The final path to the supertux2 executable should look like this: "<stneatexperimentfolder>/build/bin/build/supertux2".
 
-Boost and sqlite3 are required to run/compile this project. Supertux itself also has a few dependencies which you can check out in the official docs.
+Boost, sqlite3 and GNU Parallel are required to run/compile this project. Supertux itself also has a few dependencies which you can check out in the official docs.
 
 Following is a list of available parameters for experiment parameter files:
 
@@ -31,3 +31,7 @@ noveltysearch <1/0> | Use Novelty Search (1) or don't (0, default)
 It's recommended to use 5 rangefinder sensors as that's the height Tux can jump up to and an odd number of pie slice sensors so Tux' front is detected properly.
 
 Please note that the noveltysearch and randseed parameters in experiment parameter files override the settings given by console arguments. I've still left the option to set these options via console to ease the usage of shellscripts for automated experiment execution.
+
+Currently known bugs:
+- Novelty Search individuals rarely have an empty behavior (I implemented a workaround so the program doesn't crash)
+- HyperNEAT probably won't do much until I implement hidden neurons
