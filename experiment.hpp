@@ -9,6 +9,7 @@
 #include "multineat/Species.h"
 #include "multineat/Parameters.h"
 #include "multineat/Behavior.h"
+#include "multineat/sensors/sensormanager.hpp"
 
 #include <cxxabi.h>
 #include <execinfo.h>
@@ -75,8 +76,10 @@ public:
   static bool novelty_search;
   static bool hyperneat;
   
-private:  
+private:
   // Static for db handler access
+  void generate_substrate();
+  
   static vector<Genome*> genomes;
   
   // Archive for Novelty Search
@@ -92,6 +95,8 @@ private:
   
   Genome start_genome;
   Population pop;
+  
+  Substrate substrate;
   
   static void print_usage();
 };

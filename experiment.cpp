@@ -80,26 +80,7 @@ start_genome(0, num_range_sensors + num_depth_sensors + num_pieslice_sensors + 1
 {
   if (hyperneat) 
   {
-    std::vector<std::vector<double>> inputs;
-    std::vector<std::vector<double>> hidden;
-    std::vector<std::vector<double>> outputs;
-    
-    // Small hack for consistent genome input/output dimensionality
-    inputs = {std::vector<double>()};
-    
-    inputs[0].push_back(0);
-    inputs[0].push_back(0);
-    
-    if (num_hidden_start_neurons > 0)
-      inputs[0].push_back(0);
-    
-    Substrate s = Substrate(inputs, hidden, outputs);
-    
-    start_genome = Genome(0, s.GetMinCPPNInputs(), 0, s.GetMinCPPNOutputs(), false, UNSIGNED_SIGMOID, UNSIGNED_SIGMOID, 1, params);
-    
-    pop = strcmp(Experiment::pop_filename.c_str(), "") ? 
-      Population(Experiment::pop_filename.c_str()) : 
-      Population(start_genome, params, true, 2.0, (using_seed ? seed : (int) time(0)));
+    generate_substrate();
   }
 }
 
@@ -184,7 +165,7 @@ void Experiment::start_processes()
   ss << path_to_supertux_executable;
   ss << " --neat";
   
-  if (Experiment::novelty_search) ss << " --noveltysearch";
+//   if (Experiment::novelty_search) ss << " --noveltysearch";
   if (Experiment::hyperneat) ss << " --hyperneat";
   
   // All child processes read from the same population file
@@ -351,6 +332,197 @@ void Experiment::update_sparsenesses()
   }
 }
 
+void Experiment::generate_substrate()
+{
+  SensorManager sm;
+  sm.initSensors();
+  
+  std::vector<std::vector<double>> input_coords;
+  std::vector<std::vector<double>> hidden_coords;	// TODO: Add support for hidden neurons (third dimension, arrange in a circle)
+  std::vector<std::vector<double>> output_coords;
+  
+  std::vector<std::shared_ptr<RangeFinderSensor>>* rfsensors = sm.get_cur_rangefinder_sensors();
+  std::vector<std::shared_ptr<DepthFinderSensor>>* dfsensors = sm.get_cur_depthfinder_sensors();
+  std::vector<std::shared_ptr<PieSliceSensor>>*    pssensors = sm.get_cur_pieslice_sensors();
+  
+  // First, calculate maximum x and y coordinates so we can normalize substrate coordinates to (-1, 1)
+  int maxX = 0;
+  int maxY = 0;
+  
+  for (std::vector<std::shared_ptr<RangeFinderSensor>>::iterator it = rfsensors->begin(); it != rfsensors->end(); ++it)
+  {
+    Vector v = (*it)->get_offset();
+    
+    // Get middle point of the RangeFinderSensor
+    int x = abs(v.x / 2.0);
+    int y = abs(v.y);
+    
+    if (x > maxX)
+      maxX = x;
+    
+    if (y > maxY) 
+      maxY = y;
+    
+  }
+  
+  for (std::vector<std::shared_ptr<DepthFinderSensor>>::iterator it = dfsensors->begin(); it != dfsensors->end(); ++it)
+  {
+    Vector v = (*it)->get_offset();
+    
+    // Get middle point of the DepthFinderSensor
+    int x = abs(v.x);
+    int y = abs(v.y / 2.0);
+    
+    if (x > maxX) 
+      maxX = x;
+    
+    if (y > maxY)
+      maxY = y;
+    
+  }
+  
+  for (std::vector<std::shared_ptr<PieSliceSensor>>::iterator it = pssensors->begin(); it != pssensors->end(); ++it)
+  {
+    Vector v1 = (*it)->get_offset();
+    Vector v2 = (*it)->get_offset2();
+    
+    // Get middle point of the PieSliceSensor
+    // Divide by three because both vectors form a triangle with (0, 0) as the third point
+    int x = abs((v1.x + v2.x) / 3.0);
+    int y = abs((v1.y + v2.y) / 3.0);
+    
+    if (x > maxX)
+      maxX = x;
+    
+    if (y > maxY)
+      maxY = y;
+    
+  }
+    
+  for (std::vector<std::shared_ptr<RangeFinderSensor>>::iterator it = rfsensors->begin(); it != rfsensors->end(); ++it)
+  {
+    std::vector<double> coords;
+    
+    Vector v = (*it)->get_offset();
+    
+    // Normalize between (0, 1) and then between (-1, 1)
+    coords.push_back(v.x / (double) maxX);
+    coords.push_back(v.y / (double) maxY);
+    
+    coords.push_back(v.x);
+    coords.push_back(v.y);
+    
+    input_coords.push_back(coords);
+  }
+  
+  for (std::vector<std::shared_ptr<DepthFinderSensor>>::iterator it = dfsensors->begin(); it != dfsensors->end(); ++it)
+  {
+    std::vector<double> coords;
+    
+    Vector v = (*it)->get_offset();
+    
+    coords.push_back((v.x / (double) maxX));
+    coords.push_back((v.y / (double) maxY));
+    
+    coords.push_back(v.x);
+    coords.push_back(v.y);
+    
+    input_coords.push_back(coords);
+  }
+  
+  for (std::vector<std::shared_ptr<PieSliceSensor>>::iterator it = pssensors->begin(); it != pssensors->end(); ++it)
+  {
+    std::vector<double> coords;
+    
+    Vector v1 = (*it)->get_offset();
+    Vector v2 = (*it)->get_offset2();
+    
+    // Same procedure as above, third point is (0, 0)    
+    coords.push_back(((v1.x + v2.x) / 3.0) / (double) maxX);
+    coords.push_back(((v1.y + v2.y) / 3.0) / (double) maxY);
+    
+    input_coords.push_back(coords);
+  }
+  
+  std::vector<double> bias;
+  bias.push_back(0);
+  bias.push_back(0);
+  
+  input_coords.push_back(bias);
+  
+  
+  // TODO: Arrange hidden neurons in a circle around Tux, seems like a good idea
+  
+  std::vector<double> output;
+  
+  // Arrange output substrate coordinates around Tux
+  // UP should be above Tux, DOWN below, etc. with Tux "being" at (0, 0)
+  
+  // UP
+  output.push_back(0);
+  output.push_back(1);
+  
+  output_coords.push_back(output);
+  output.clear();
+  
+  // DOWN
+  output.push_back(0);
+  output.push_back(-1);
+  
+  output_coords.push_back(output);
+  output.clear();
+  
+  // LEFT
+  output.push_back(-1);
+  output.push_back(0);
+  
+  output_coords.push_back(output);
+  output.clear();
+  
+  // RIGHT
+  output.push_back(1);
+  output.push_back(0);
+  
+  output_coords.push_back(output);
+  output.clear();
+  
+  // JUMP
+  output.push_back(0);
+  output.push_back(0.8);
+  
+  output_coords.push_back(output);
+  output.clear();
+  
+  // ACTION
+  output.push_back(0);
+  output.push_back(0.1);
+  
+  output_coords.push_back(output);
+  
+  // Parameters taken from MultiNEAT's HyperNEAT example
+  
+  substrate = Substrate(input_coords, hidden_coords, output_coords);
+  
+  substrate.m_allow_hidden_hidden_links = false;
+  substrate.m_allow_hidden_output_links = true;
+  substrate.m_allow_input_hidden_links = true;
+  substrate.m_allow_input_output_links = true;
+  substrate.m_allow_looped_hidden_links = false;
+  substrate.m_allow_looped_output_links = false;
+  substrate.m_allow_output_hidden_links = false;
+  substrate.m_allow_output_output_links = false;
+  substrate.m_query_weights_only = true;
+  substrate.m_max_weight_and_bias = 8;
+  
+  substrate.m_hidden_nodes_activation = ActivationFunction::SIGNED_SIGMOID;
+  substrate.m_output_nodes_activation = ActivationFunction::UNSIGNED_SIGMOID;
+  
+  start_genome = Genome(0, substrate.GetMinCPPNInputs(), 0, 
+	       substrate.GetMinCPPNOutputs(), false, TANH, TANH, 0, params);
+  pop = strcmp(pop_filename.c_str(), "") ? Population(pop_filename.c_str()) : Population(start_genome, params, true, 1.0, (using_seed ? seed : (int) time(0)));
+}
+
+
 int Experiment::select_handler(void* data, int argc, char** argv, char** colNames)
 {
   int id = std::stoi(argv[0]);
@@ -499,14 +671,17 @@ void Experiment::parse_experiment_parameters()
     }
     else if (s == "autosaveinterval")		Experiment::autosave_interval = (int) d;
     
-    else if (s == "numrangesensors") 		Experiment::num_range_sensors = (int) d;
-    else if (s == "numdepthsensors") 		Experiment::num_depth_sensors = (int) d;
-    else if (s == "numpiesensors") 		Experiment::num_pieslice_sensors = (int) d;
+    else if (s == "numrangesensors") 		SensorManager::AMOUNT_RANGE_SENSORS = (int) d;
+    else if (s == "numdepthsensors") 		SensorManager::AMOUNT_DEPTH_SENSORS = (int) d;
+    else if (s == "numpiesensors") 		SensorManager::AMOUNT_PIESLICE_SENSORS = (int) d;
+    
+    else if (s == "spacingdepthsensors")	SensorManager::SPACING_DEPTH_SENSORS = (int) d;
+    else if (s == "radiuspiesensors")		SensorManager::RADIUS_PIESLICE_SENSORS = (int) d;
     
     else if (s == "numhiddenstartneurons")	Experiment::num_hidden_start_neurons = (int) d;
     
     else if (s == "noveltysearch" && (int) d)	Experiment::novelty_search = true;
-    else if (s == "hyperneat" && (int) d)	Experiment::novelty_search = true;
+    else if (s == "hyperneat" && (int) d)	Experiment::hyperneat = true;
   }
 }
 
