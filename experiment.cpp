@@ -9,6 +9,7 @@
 #include <sstream>
 #include <stdio.h>
 #include <string>
+#include <math.h>
 
 #include <sqlite3.h>
 
@@ -46,6 +47,8 @@ int Experiment::num_depth_sensors = 7;
 int Experiment::num_pieslice_sensors = 7;
 
 int Experiment::num_hidden_start_neurons = 0;
+
+int Experiment::num_hidden_start_neurons_cppn = 0;
 
 bool Experiment::novelty_search = false;
 bool Experiment::hyperneat = false;
@@ -345,9 +348,48 @@ void Experiment::generate_substrate()
   std::vector<std::shared_ptr<DepthFinderSensor>>* dfsensors = sm.get_cur_depthfinder_sensors();
   std::vector<std::shared_ptr<PieSliceSensor>>*    pssensors = sm.get_cur_pieslice_sensors();
   
+  double inputZ = -1;
+  double outputZ = 1;
+  double hiddenZ = 0;
+  
   // First, calculate maximum x and y coordinates so we can normalize substrate coordinates to (-1, 1)
   int maxX = 0;
   int maxY = 0;
+  
+  if (num_hidden_start_neurons > 0) {
+    std::vector<double> coords;
+    if (num_hidden_start_neurons == 1) {
+      // If there is only one hidden start neuron, place it in the center and be done with it
+      coords.push_back(0);
+      coords.push_back(0);
+      coords.push_back(hiddenZ);
+      
+      hidden_coords.push_back(coords);
+    } else {
+      // If there are more than one, arrange in a circle
+      coords.push_back(1);
+      coords.push_back(0);
+      coords.push_back(hiddenZ);
+      
+      double cur_angle = 0;
+      
+      // How many neurons per full rotation?
+      double angle_step = 2 * M_PI / num_hidden_start_neurons;
+      
+      for (int i = 0; i < num_hidden_start_neurons - 1; i++) {
+	// Push back coordinates, rotate by the angle step each iteration
+	hidden_coords.push_back(coords);
+	
+	std::vector<double> coords_new;
+	
+	coords_new.push_back(coords.at(0) * cos(angle_step) + coords.at(1) * sin(angle_step));
+	coords_new.push_back(coords.at(1) * cos(angle_step) - coords.at(0) * sin(angle_step));
+	coords_new.push_back(hiddenZ);
+
+	coords = coords_new;
+      }
+    }
+  }
   
   for (std::vector<std::shared_ptr<RangeFinderSensor>>::iterator it = rfsensors->begin(); it != rfsensors->end(); ++it)
   {
@@ -412,6 +454,8 @@ void Experiment::generate_substrate()
     coords.push_back(v.x);
     coords.push_back(v.y);
     
+    if (num_hidden_start_neurons > 0) coords.push_back(inputZ);
+    
     input_coords.push_back(coords);
   }
   
@@ -427,6 +471,8 @@ void Experiment::generate_substrate()
     coords.push_back(v.x);
     coords.push_back(v.y);
     
+    if (num_hidden_start_neurons > 0) coords.push_back(inputZ);
+    
     input_coords.push_back(coords);
   }
   
@@ -440,6 +486,7 @@ void Experiment::generate_substrate()
     // Same procedure as above, third point is (0, 0)    
     coords.push_back(((v1.x + v2.x) / 3.0) / (double) maxX);
     coords.push_back(((v1.y + v2.y) / 3.0) / (double) maxY);
+    if (num_hidden_start_neurons > 0) coords.push_back(inputZ);
     
     input_coords.push_back(coords);
   }
@@ -447,12 +494,10 @@ void Experiment::generate_substrate()
   std::vector<double> bias;
   bias.push_back(0);
   bias.push_back(0);
+  if (num_hidden_start_neurons > 0) bias.push_back(inputZ);
   
   input_coords.push_back(bias);
-  
-  
-  // TODO: Arrange hidden neurons in a circle around Tux, seems like a good idea
-  
+    
   std::vector<double> output;
   
   // Arrange output substrate coordinates around Tux
@@ -461,6 +506,7 @@ void Experiment::generate_substrate()
   // UP
   output.push_back(0);
   output.push_back(1);
+  if (num_hidden_start_neurons > 0) output.push_back(outputZ);
   
   output_coords.push_back(output);
   output.clear();
@@ -468,6 +514,8 @@ void Experiment::generate_substrate()
   // DOWN
   output.push_back(0);
   output.push_back(-1);
+  if (num_hidden_start_neurons > 0) output.push_back(outputZ);
+
   
   output_coords.push_back(output);
   output.clear();
@@ -475,6 +523,7 @@ void Experiment::generate_substrate()
   // LEFT
   output.push_back(-1);
   output.push_back(0);
+  if (num_hidden_start_neurons > 0) output.push_back(outputZ);
   
   output_coords.push_back(output);
   output.clear();
@@ -482,6 +531,7 @@ void Experiment::generate_substrate()
   // RIGHT
   output.push_back(1);
   output.push_back(0);
+  if (num_hidden_start_neurons > 0) output.push_back(outputZ);
   
   output_coords.push_back(output);
   output.clear();
@@ -489,6 +539,7 @@ void Experiment::generate_substrate()
   // JUMP
   output.push_back(0);
   output.push_back(0.8);
+  if (num_hidden_start_neurons > 0) output.push_back(outputZ);
   
   output_coords.push_back(output);
   output.clear();
@@ -496,6 +547,7 @@ void Experiment::generate_substrate()
   // ACTION
   output.push_back(0);
   output.push_back(0.1);
+  if (num_hidden_start_neurons > 0) output.push_back(outputZ);
   
   output_coords.push_back(output);
   
@@ -517,7 +569,7 @@ void Experiment::generate_substrate()
   substrate.m_hidden_nodes_activation = ActivationFunction::SIGNED_SIGMOID;
   substrate.m_output_nodes_activation = ActivationFunction::UNSIGNED_SIGMOID;
   
-  start_genome = Genome(0, substrate.GetMinCPPNInputs(), 0, 
+  start_genome = Genome(0, substrate.GetMinCPPNInputs(), num_hidden_start_neurons_cppn, 
 	       substrate.GetMinCPPNOutputs(), false, TANH, TANH, 0, params);
   pop = strcmp(pop_filename.c_str(), "") ? Population(pop_filename.c_str()) : Population(start_genome, params, true, 1.0, (using_seed ? seed : (int) time(0)));
 }
@@ -680,6 +732,8 @@ void Experiment::parse_experiment_parameters()
     
     else if (s == "numhiddenstartneurons")	Experiment::num_hidden_start_neurons = (int) d;
     
+    else if (s == "numhiddenstartneuronscppn")	Experiment::num_hidden_start_neurons_cppn = (int) d;
+    
     else if (s == "noveltysearch" && (int) d)	Experiment::novelty_search = true;
     else if (s == "hyperneat" && (int) d)	Experiment::hyperneat = true;
   }
@@ -756,5 +810,3 @@ void Experiment::print_usage()
   
   std::cout << ss.str();
 }
-
-

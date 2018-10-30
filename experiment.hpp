@@ -60,6 +60,8 @@ public:
   
   static int num_hidden_start_neurons;
   
+  static int num_hidden_start_neurons_cppn;
+  
   
   static int busy_handler(void* data, int retry);
   static int select_handler(void* data, int argc, char** argv, char** colNames);
