@@ -30,6 +30,8 @@ radiuspieslicesensors <int> | Radius of pieslice sensors
 noveltysearch <1/0> | Use Novelty Search (1) or don't (0, default)
 hyperneat <1/0> | User HyperNEAT (1) or don't (0, default)
 
+regularizejumps <1/0> | fitness = max(0, fitness - [number of jumps]), used to prevent individuals from "cheating" by jumping all the time
+
 It's recommended to use 5 rangefinder sensors as that's the height Tux can jump up to and an odd number of pie slice sensors so Tux' front is detected properly.
 
 Please note that the noveltysearch and randseed parameters in experiment parameter files override the settings given by console arguments. I've still left the option to set these options via console to ease the usage of shellscripts for automated experiment execution.
