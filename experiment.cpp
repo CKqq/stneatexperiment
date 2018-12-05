@@ -10,6 +10,9 @@
 #include <stdio.h>
 #include <string>
 #include <math.h>
+#include <chrono>
+
+#include <sys/stat.h>
 
 #include <sqlite3.h>
 
@@ -24,34 +27,19 @@ string Experiment::db_filename = "neat.db";
 int Experiment::max_db_retry = 100;
 int Experiment::db_sleeptime = 50;
 
-string Experiment::pop_filename = "";
-string Experiment::param_filename = "";
-string Experiment::experimentparam_filename = "";
-
 string Experiment::path_to_supertux_executable = "./bin/build/supertux2";
-string Experiment::path_to_level = "./bin/data/levels/world1/01\ -\ Welcome\ to\ Antarctica.stl";
-int Experiment::num_cores = 3;
-int Experiment::max_gens = 100;
-
-bool Experiment::using_seed = false;
-int Experiment::seed = 0;
 
 int Experiment::cur_gen = 0;
+int Experiment::top_genome_gen_id = 0;
 int Experiment::top_genome_id = 0;
 double Experiment::top_fitness = 0;
 
-int Experiment::autosave_interval = 0;
-
-int Experiment::num_range_sensors = 5;
-int Experiment::num_depth_sensors = 7;
-int Experiment::num_pieslice_sensors = 7;
-
-int Experiment::num_hidden_start_neurons = 0;
-
-int Experiment::num_hidden_start_neurons_cppn = 0;
-
-bool Experiment::novelty_search = false;
-bool Experiment::hyperneat = false;
+int Experiment::num_winner_genomes = 0;
+float Experiment::fitness_sum = 0;
+float Experiment::airtime_sum = 0;
+float Experiment::groundtime_sum = 0;
+int Experiment::jump_sum = 0;
+double Experiment::evaluation_time = 0;
 
 Parameters Experiment::params;
 
@@ -76,12 +64,12 @@ int main(int argc, char **argv) {
 
 
 Experiment::Experiment() : 
-start_genome(0, num_range_sensors + num_depth_sensors + num_pieslice_sensors + 1, num_hidden_start_neurons, 
+start_genome(0, ExperimentParameters::num_range_sensors + ExperimentParameters::num_depth_sensors + ExperimentParameters::num_pieslice_sensors + 1, ExperimentParameters::num_hidden_start_neurons, 
   6, false, UNSIGNED_SIGMOID, UNSIGNED_SIGMOID, 1, params),
-  pop(strcmp(Experiment::pop_filename.c_str(), "") ? 
-  Population(Experiment::pop_filename.c_str()) : Population(start_genome, params, true, 2.0, (using_seed ? seed : (int) time(0))))
+  pop(strcmp(ExperimentParameters::pop_filename.c_str(), "") ? 
+  Population(ExperimentParameters::pop_filename.c_str()) : Population(start_genome, params, true, 2.0, (ExperimentParameters::using_seed ? ExperimentParameters::seed : (int) time(0))))
 {
-  if (hyperneat) 
+  if (ExperimentParameters::hyperneat) 
   {
     generate_substrate();
   }
@@ -94,13 +82,24 @@ Experiment::~Experiment()
 void Experiment::run_evolution() {
   std::remove(db_filename.c_str());
   
-  for (int i = 1; i <= max_gens; i++) {    
+  init_db();
+  
+  for (int i = 1; i <= ExperimentParameters::max_gens; i++) {    
     std::cout << "Working on generation #" << i << "..." << std::endl;
+    
+    num_winner_genomes = 0;
+    
+    fitness_sum = 0;
+    airtime_sum = 0;
+    groundtime_sum = 0;
+    jump_sum = 0;
+    
+    evaluation_time = 0;
     
     cur_gen = i;
     refresh_genome_list();
     
-    if (novelty_search) {
+    if (ExperimentParameters::novelty_search) {
       std::vector<PhenotypeBehavior>* behaviors = new std::vector<PhenotypeBehavior>();
       
       for (int i = 0; i < genomes.size(); i++) 
@@ -109,7 +108,7 @@ void Experiment::run_evolution() {
       pop.InitPhenotypeBehaviorData(behaviors, &archive);
     }
     
-    if (autosave_interval != 0 && i % autosave_interval == 0) {
+    if (ExperimentParameters::autosave_interval != 0 && i % ExperimentParameters::autosave_interval == 0) {
       std::ostringstream ss;
       ss << "./neat_gen" << i;
       save_pop(ss.str().c_str());
@@ -122,9 +121,13 @@ void Experiment::run_evolution() {
     start_processes();
     
     // ... and get the fitness values from the db file
+    // Also update info about the generation
     set_fitness_values();
+    update_gen_info();
     
-    std::cout << "Done. Top fitness: " << top_fitness << " by individual #" << top_genome_id << std::endl;
+    std::cout << "Done. Top fitness: " << top_fitness << " by individual #" << top_genome_id << ", generation #" << top_genome_gen_id << std::endl;
+    std::cout << "Evaluation time: " << (int) (evaluation_time / 60) << "min" << (int) evaluation_time % 60 << "sec" << std::endl;
+    std::cout << num_winner_genomes << " genome(s) out of " << genomes.size() << " finished the level (" << num_winner_genomes  / (double) genomes.size() * 100 << "%)" << std::endl;
     
     pop.Epoch();
   }
@@ -138,16 +141,14 @@ void Experiment::start_processes()
   
   // Distribute genomes as evenly as possible
   int remaining_genome_count = genomes.size();
-  int cores_left = num_cores;
-  
-  std::cout << "Genomes: " << remaining_genome_count << std::endl;
+  int cores_left = ExperimentParameters::num_cores;
   
   std::vector<int> startindices;
   std::vector<int> endindices;
   
   int curindex = 0;
   
-  for (int j = 0; j < num_cores; j++) {
+  for (int j = 0; j < ExperimentParameters::num_cores; j++) {
     startindices.push_back(++curindex - 1);
     
     int single_genome_count = remaining_genome_count / cores_left;
@@ -169,14 +170,14 @@ void Experiment::start_processes()
   ss << " --neat";
   
 //   if (Experiment::novelty_search) ss << " --noveltysearch";
-  if (Experiment::hyperneat) ss << " --hyperneat";
+  if (ExperimentParameters::hyperneat) ss << " --hyperneat";
   
   // All child processes read from the same population file
   ss << " --popfile " << boost::filesystem::canonical(temp_pop_filename);
   
   // Only add experiment and MultiNEAT param files if they're configured...
-  if (strcmp(experimentparam_filename.c_str(), "")) 	ss << " --experimentparamfile " << experimentparam_filename;
-  if (strcmp(param_filename.c_str(), "")) 		ss << " --paramfile " << param_filename;
+  if (strcmp(ExperimentParameters::experimentparam_filename.c_str(), "")) 	ss << " --experimentparamfile " << ExperimentParameters::experimentparam_filename;
+  if (strcmp(ExperimentParameters::param_filename.c_str(), "")) 		ss << " --paramfile " << ExperimentParameters::param_filename;
   
   ss << " --dbfile " << boost::filesystem::canonical(db_filename);
   ss << " --curgen " << cur_gen;
@@ -195,17 +196,39 @@ void Experiment::start_processes()
   
   ss << "::: '";
   
-  ss << path_to_level;
+  ss << ExperimentParameters::path_to_level;
   
   ss << "'";
   
 //   std::cout << ss.str() << std::endl;
   
-  // Ready to rumble
+  // Ready to rumble, don't forget to measure the time
+  std::chrono::time_point<std::chrono::high_resolution_clock> start = std::chrono::high_resolution_clock::now();
   std::system(ss.str().c_str());
+  std::chrono::time_point<std::chrono::high_resolution_clock> finish = std::chrono::high_resolution_clock::now();
 
+  std::chrono::duration<double> elapsed = finish - start;
+  
+  evaluation_time = elapsed.count();
   // Remove temporary population file. If we have to, we'll make a new one
   std::remove(temp_pop_filename.c_str());
+}
+
+void Experiment::init_db()
+{
+  sqlite3* db;  
+  sqlite3_open("neat.db", &db);
+  
+  sqlite3_busy_handler(db, busy_handler, (void*) nullptr);
+    
+  char* err;
+  std::stringstream ss;
+  
+  ss << "CREATE TABLE RUN_INFO (id INT PRIMARY KEY NOT NULL, num_genomes INT, avg_fitness REAL, time REAL, avg_airtime REAL, avg_groundtime REAL, avg_jumps REAL, top_fitness REAL, amt_winners INT);";
+  
+  sqlite3_exec(db, ss.str().c_str(), 0, 0, &err);
+  
+  sqlite3_close(db);
 }
 
 void Experiment::update_db()
@@ -217,7 +240,10 @@ void Experiment::update_db()
     
   char* err;
   std::stringstream ss;
-  ss << "CREATE TABLE GEN" << cur_gen << "(id INT PRIMARY KEY NOT NULL, fitness REAL, qLeft REAL, qRight REAL, qUp REAL, qDown REAL, qJump REAL, qAction REAL);";
+  
+  ss.str("");
+  
+  ss << "CREATE TABLE GEN" << cur_gen << "(id INT PRIMARY KEY NOT NULL, fitness REAL, airtime REAL, groundtime REAL, num_jumps INT, qLeft REAL, qRight REAL, qUp REAL, qDown REAL, qJump REAL, qAction REAL, won INT);";
     
   sqlite3_exec(db, ss.str().c_str(), 0, 0, &err);
   
@@ -226,7 +252,7 @@ void Experiment::update_db()
     
     // Negative fitness if not evaluated yet. If fitness values stay negative, NEAT might just break
     // Last values are for ns behavior
-    ss << "INSERT INTO GEN" << cur_gen << " VALUES(" << (*it)->GetID() << ", -1, -1, -1, -1, -1, -1, -1);";
+    ss << "INSERT INTO GEN" << cur_gen << " VALUES(" << (*it)->GetID() << ", -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1);";
     
     sqlite3_exec(db, ss.str().c_str(), 0, 0, &err);
   }
@@ -247,9 +273,9 @@ void Experiment::set_fitness_values()
   std::stringstream ss;
   ss << "SELECT * FROM gen" << cur_gen << ";";
   
-  sqlite3_exec(db, ss.str().c_str(), (novelty_search ? select_handler_ns : select_handler), 0, &err);
+  sqlite3_exec(db, ss.str().c_str(), (ExperimentParameters::novelty_search ? select_handler_ns : select_handler), 0, &err);
   
-  if (novelty_search) {
+  if (ExperimentParameters::novelty_search) {
     for (std::vector<Genome*>::iterator it = genomes.begin(); it != genomes.end(); ++it) {
       if ((*it)->m_PhenotypeBehavior->m_Data[0].size() == 0) {
 	std::cout << "ERROR OCCURED WITH GENOME #" << (*it)->GetID() << std::endl;
@@ -257,6 +283,23 @@ void Experiment::set_fitness_values()
     }
     update_sparsenesses();
   }
+
+  sqlite3_close(db);
+}
+
+void Experiment::update_gen_info()
+{
+  sqlite3* db;  
+  sqlite3_open("neat.db", &db);
+  
+  sqlite3_busy_handler(db, busy_handler, (void*) nullptr);
+    
+  char* err;
+  std::stringstream ss;
+
+  ss << "INSERT INTO RUN_INFO VALUES(" << cur_gen << ", " << genomes.size() << ", " << fitness_sum / genomes.size() << ", " << evaluation_time << ", " << (airtime_sum / (double) genomes.size()) << ", " << (groundtime_sum / (double) genomes.size()) << ", " << ((double) jump_sum) / genomes.size() << ", " << top_fitness << ", " << num_winner_genomes << ");";
+    
+  sqlite3_exec(db, ss.str().c_str(), 0, 0, &err);
 
   sqlite3_close(db);
 }
@@ -356,9 +399,9 @@ void Experiment::generate_substrate()
   int maxX = 0;
   int maxY = 0;
   
-  if (num_hidden_start_neurons > 0) {
+  if (ExperimentParameters::num_hidden_start_neurons > 0) {
     std::vector<double> coords;
-    if (num_hidden_start_neurons == 1) {
+    if (ExperimentParameters::num_hidden_start_neurons == 1) {
       // If there is only one hidden start neuron, place it in the center and be done with it
       coords.push_back(0);
       coords.push_back(0);
@@ -374,9 +417,9 @@ void Experiment::generate_substrate()
       double cur_angle = 0;
       
       // How many neurons per full rotation?
-      double angle_step = 2 * M_PI / num_hidden_start_neurons;
+      double angle_step = 2 * M_PI / ExperimentParameters::num_hidden_start_neurons;
       
-      for (int i = 0; i < num_hidden_start_neurons - 1; i++) {
+      for (int i = 0; i < ExperimentParameters::num_hidden_start_neurons - 1; i++) {
 	// Push back coordinates, rotate by the angle step each iteration
 	hidden_coords.push_back(coords);
 	
@@ -454,7 +497,7 @@ void Experiment::generate_substrate()
     coords.push_back(v.x);
     coords.push_back(v.y);
     
-    if (num_hidden_start_neurons > 0) coords.push_back(inputZ);
+    if (ExperimentParameters::num_hidden_start_neurons > 0) coords.push_back(inputZ);
     
     input_coords.push_back(coords);
   }
@@ -471,7 +514,7 @@ void Experiment::generate_substrate()
     coords.push_back(v.x);
     coords.push_back(v.y);
     
-    if (num_hidden_start_neurons > 0) coords.push_back(inputZ);
+    if (ExperimentParameters::num_hidden_start_neurons > 0) coords.push_back(inputZ);
     
     input_coords.push_back(coords);
   }
@@ -486,7 +529,7 @@ void Experiment::generate_substrate()
     // Same procedure as above, third point is (0, 0)    
     coords.push_back(((v1.x + v2.x) / 3.0) / (double) maxX);
     coords.push_back(((v1.y + v2.y) / 3.0) / (double) maxY);
-    if (num_hidden_start_neurons > 0) coords.push_back(inputZ);
+    if (ExperimentParameters::num_hidden_start_neurons > 0) coords.push_back(inputZ);
     
     input_coords.push_back(coords);
   }
@@ -494,7 +537,7 @@ void Experiment::generate_substrate()
   std::vector<double> bias;
   bias.push_back(0);
   bias.push_back(0);
-  if (num_hidden_start_neurons > 0) bias.push_back(inputZ);
+  if (ExperimentParameters::num_hidden_start_neurons > 0) bias.push_back(inputZ);
   
   input_coords.push_back(bias);
     
@@ -506,7 +549,7 @@ void Experiment::generate_substrate()
   // UP
   output.push_back(0);
   output.push_back(1);
-  if (num_hidden_start_neurons > 0) output.push_back(outputZ);
+  if (ExperimentParameters::num_hidden_start_neurons > 0) output.push_back(outputZ);
   
   output_coords.push_back(output);
   output.clear();
@@ -514,7 +557,7 @@ void Experiment::generate_substrate()
   // DOWN
   output.push_back(0);
   output.push_back(-1);
-  if (num_hidden_start_neurons > 0) output.push_back(outputZ);
+  if (ExperimentParameters::num_hidden_start_neurons > 0) output.push_back(outputZ);
 
   
   output_coords.push_back(output);
@@ -523,7 +566,7 @@ void Experiment::generate_substrate()
   // LEFT
   output.push_back(-1);
   output.push_back(0);
-  if (num_hidden_start_neurons > 0) output.push_back(outputZ);
+  if (ExperimentParameters::num_hidden_start_neurons > 0) output.push_back(outputZ);
   
   output_coords.push_back(output);
   output.clear();
@@ -531,7 +574,7 @@ void Experiment::generate_substrate()
   // RIGHT
   output.push_back(1);
   output.push_back(0);
-  if (num_hidden_start_neurons > 0) output.push_back(outputZ);
+  if (ExperimentParameters::num_hidden_start_neurons > 0) output.push_back(outputZ);
   
   output_coords.push_back(output);
   output.clear();
@@ -539,7 +582,7 @@ void Experiment::generate_substrate()
   // JUMP
   output.push_back(0);
   output.push_back(0.8);
-  if (num_hidden_start_neurons > 0) output.push_back(outputZ);
+  if (ExperimentParameters::num_hidden_start_neurons > 0) output.push_back(outputZ);
   
   output_coords.push_back(output);
   output.clear();
@@ -547,7 +590,7 @@ void Experiment::generate_substrate()
   // ACTION
   output.push_back(0);
   output.push_back(0.1);
-  if (num_hidden_start_neurons > 0) output.push_back(outputZ);
+  if (ExperimentParameters::num_hidden_start_neurons > 0) output.push_back(outputZ);
   
   output_coords.push_back(output);
   
@@ -569,9 +612,9 @@ void Experiment::generate_substrate()
   substrate.m_hidden_nodes_activation = ActivationFunction::SIGNED_SIGMOID;
   substrate.m_output_nodes_activation = ActivationFunction::UNSIGNED_SIGMOID;
   
-  start_genome = Genome(0, substrate.GetMinCPPNInputs(), num_hidden_start_neurons_cppn, 
+  start_genome = Genome(0, substrate.GetMinCPPNInputs(), ExperimentParameters::num_hidden_start_neurons_cppn, 
 	       substrate.GetMinCPPNOutputs(), false, TANH, TANH, 0, params);
-  pop = strcmp(pop_filename.c_str(), "") ? Population(pop_filename.c_str()) : Population(start_genome, params, true, 1.0, (using_seed ? seed : (int) time(0)));
+  pop = strcmp(ExperimentParameters::pop_filename.c_str(), "") ? Population(ExperimentParameters::pop_filename.c_str()) : Population(start_genome, params, true, 1.0, (ExperimentParameters::using_seed ? ExperimentParameters::seed : (int) time(0)));
 }
 
 
@@ -582,16 +625,24 @@ int Experiment::select_handler(void* data, int argc, char** argv, char** colName
   
   for (std::vector<Genome*>::iterator it = genomes.begin(); it != genomes.end(); ++it) {
     if ((*it)->GetID() == id) {
-      (*it)->SetFitness((Experiment::novelty_search) ? sparseness(*it) : fitness);
+      (*it)->SetFitness((ExperimentParameters::novelty_search) ? sparseness(*it) : fitness);
       (*it)->SetEvaluated();
       if (fitness > top_fitness) {
 	top_fitness = fitness;
 	top_genome_id = id;
+	top_genome_gen_id = cur_gen;
       }
       
       break;
     }
   }
+  
+  fitness_sum += std::stod(argv[1]);
+  airtime_sum += std::stod(argv[2]);
+  groundtime_sum += std::stod(argv[3]);
+  jump_sum += std::stoi(argv[4]);
+  
+  if (std::stod(argv[11]) > 0) num_winner_genomes++;
   
   return 0;
 }
@@ -617,6 +668,15 @@ int Experiment::select_handler_ns(void* data, int argc, char** argv, char** colN
       break;
     }
   }
+
+  fitness_sum += std::stod(argv[1]);
+  airtime_sum += std::stod(argv[2]);
+  groundtime_sum += std::stod(argv[3]);
+  jump_sum += std::stoi(argv[4]);
+  
+  if (std::stod(argv[11]) > 0) num_winner_genomes++;
+  
+  if (std::stod(argv[8]) > 0) num_winner_genomes++;
   
   return 0;
 }
@@ -635,7 +695,7 @@ void Experiment::parse_commandline_arguments(int argc, char** argv)
     {
       if (i + 1 < argc)
       {
-	experimentparam_filename = argv[++i];
+	ExperimentParameters::experimentparam_filename = argv[++i];
       }
       else
       {
@@ -646,7 +706,7 @@ void Experiment::parse_commandline_arguments(int argc, char** argv)
     {
       if (i + 1 < argc)
       {
-	param_filename = argv[++i];
+	ExperimentParameters::param_filename = argv[++i];
       }
       else
       {
@@ -657,7 +717,7 @@ void Experiment::parse_commandline_arguments(int argc, char** argv)
     {
       if (i + 1 < argc)
       {
-	pop_filename = argv[++i];
+	ExperimentParameters::pop_filename = argv[++i];
       }
       else
       {
@@ -672,18 +732,22 @@ void Experiment::parse_commandline_arguments(int argc, char** argv)
       int seed = 0;
       
       if (i + 1 < argc && sscanf(argv[i + 1], "%d", &seed) == 1) {
-	Experiment::using_seed = true;
+	ExperimentParameters::using_seed = true;
       } else {
 	std::cout << "Please specify a proper seed after '--seed'" << std::endl;
       }
     }
     else if (arg == "--noveltysearch")
     {
-      Experiment::novelty_search = true;
+      ExperimentParameters::novelty_search = true;
     }
     else if (arg == "--hyperneat")
     {
-      Experiment::hyperneat = true;
+      ExperimentParameters::hyperneat = true;
+    }
+    else if (i > 0 && arg[0] != '-')
+    {
+      ExperimentParameters::path_to_level = arg;
     }
   }
 }
@@ -692,8 +756,8 @@ Parameters Experiment::init_params()
 {
   Parameters res;
   
-  if (strcmp(param_filename.c_str(), "") != 0) { 
-    res.Load(param_filename.c_str());
+  if (strcmp(ExperimentParameters::param_filename.c_str(), "") != 0) { 
+    res.Load(ExperimentParameters::param_filename.c_str());
   }
   
   return res;
@@ -704,7 +768,7 @@ void Experiment::parse_experiment_parameters()
   string line, s;
   double d;
   
-  std::ifstream stream(experimentparam_filename);
+  std::ifstream stream(ExperimentParameters::experimentparam_filename);
   
   
   
@@ -715,65 +779,70 @@ void Experiment::parse_experiment_parameters()
     
     if (!(ss >> s >> d)) continue;
     
-    if (s == "maxgens") 			Experiment::max_gens = (int) d;
-    else if (s == "numcores")			Experiment::num_cores = (int) d;
+    if (s == "maxgens") 			ExperimentParameters::max_gens = (int) d;
+    else if (s == "numcores")			ExperimentParameters::num_cores = (int) d;
     else if (s == "randseed") {
-      using_seed = true;
-      seed = (int) d;
+      ExperimentParameters::using_seed = true;
+      ExperimentParameters::seed = (int) d;
     }
-    else if (s == "autosaveinterval")		Experiment::autosave_interval = (int) d;
+    else if (s == "autosaveinterval")		ExperimentParameters::autosave_interval = (int) d;
     
-    else if (s == "numrangesensors") 		SensorManager::AMOUNT_RANGE_SENSORS = (int) d;
-    else if (s == "numdepthsensors") 		SensorManager::AMOUNT_DEPTH_SENSORS = (int) d;
-    else if (s == "numpiesensors") 		SensorManager::AMOUNT_PIESLICE_SENSORS = (int) d;
+    else if (s == "numrangesensors") 		ExperimentParameters::AMOUNT_RANGE_SENSORS = (int) d;
+    else if (s == "numdepthsensors") 		ExperimentParameters::AMOUNT_DEPTH_SENSORS = (int) d;
+    else if (s == "numpiesensors") 		ExperimentParameters::AMOUNT_PIESLICE_SENSORS = (int) d;
     
-    else if (s == "spacingdepthsensors")	SensorManager::SPACING_DEPTH_SENSORS = (int) d;
-    else if (s == "radiuspiesensors")		SensorManager::RADIUS_PIESLICE_SENSORS = (int) d;
+    else if (s == "spacingdepthsensors")	ExperimentParameters::SPACING_DEPTH_SENSORS = (int) d;
+    else if (s == "radiuspiesensors")		ExperimentParameters::RADIUS_PIESLICE_SENSORS = (int) d;
     
-    else if (s == "numhiddenstartneurons")	Experiment::num_hidden_start_neurons = (int) d;
+    else if (s == "numhiddenstartneurons")	ExperimentParameters::num_hidden_start_neurons = (int) d;
     
-    else if (s == "numhiddenstartneuronscppn")	Experiment::num_hidden_start_neurons_cppn = (int) d;
+    else if (s == "numhiddenstartneuronscppn")	ExperimentParameters::num_hidden_start_neurons_cppn = (int) d;
     
-    else if (s == "noveltysearch" && (int) d)	Experiment::novelty_search = true;
-    else if (s == "hyperneat" && (int) d)	Experiment::hyperneat = true;
+    else if (s == "noveltysearch" && (int) d)	ExperimentParameters::novelty_search = true;
+    else if (s == "hyperneat" && (int) d)	ExperimentParameters::hyperneat = true;
   }
 }
 
 void Experiment::save_pop(string filename)
 {
-    pop.Save(filename.c_str());
+  mkdir("popfiles", S_IRWXU);
+  
+  std::stringstream ss = std::stringstream();
+  ss << "popfiles/";
+  ss << filename;
+    pop.Save(ss.str().c_str());
 }
 
 void Experiment::fix_filenames()
 {
   try {
-    path_to_level = boost::filesystem::canonical(path_to_level).string();
+    ExperimentParameters::path_to_level = boost::filesystem::canonical(ExperimentParameters::path_to_level).string();
   } catch (const std::exception& e) {
     std::cerr << "Bad level file specified" << std::endl;
     exit(-1);
   }
   
-  if (strcmp(pop_filename.c_str(), "")) {
+  if (strcmp(ExperimentParameters::pop_filename.c_str(), "")) {
     try {
-      pop_filename = boost::filesystem::canonical(pop_filename).string();
+      ExperimentParameters::pop_filename = boost::filesystem::canonical(ExperimentParameters::pop_filename).string();
     } catch (const std::exception& e) {
       std::cerr << "Bad population file specified" << std::endl;
       exit(-1);
     }
   }
   
-  if (strcmp(param_filename.c_str(), "")) {
+  if (strcmp(ExperimentParameters::param_filename.c_str(), "")) {
     try {
-      param_filename = boost::filesystem::canonical(param_filename).string();
+      ExperimentParameters::param_filename = boost::filesystem::canonical(ExperimentParameters::param_filename).string();
     } catch (const std::exception& e) {
       std::cerr << "Bad parameter file specified" << std::endl;
       exit(-1);
     }
   }
   
-  if (strcmp(experimentparam_filename.c_str(), "")) {
+  if (strcmp(ExperimentParameters::experimentparam_filename.c_str(), "")) {
     try {
-    experimentparam_filename = boost::filesystem::canonical(experimentparam_filename).string();
+    ExperimentParameters::experimentparam_filename = boost::filesystem::canonical(ExperimentParameters::experimentparam_filename).string();
     } catch (const std::exception& e) {
       std::cerr << "Bad experiment parameter file specified" << std::endl;
       exit(-1);

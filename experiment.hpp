@@ -37,31 +37,7 @@ public:
   
   static Parameters params;
   
-  static string path_to_supertux_executable;
-  static string path_to_level;
-  
-  static int num_cores;
-  static int max_gens;
-  
-  static bool using_seed;
-  static int seed;
-  
-  static string pop_filename;
-  static string param_filename;
-  static string experimentparam_filename;
-  static string temp_pop_filename;
-  static string db_filename;
-  
-  static int autosave_interval;
-  
-  static int num_range_sensors;
-  static int num_depth_sensors;
-  static int num_pieslice_sensors;
-  
-  static int num_hidden_start_neurons;
-  
-  static int num_hidden_start_neurons_cppn;
-  
+  static string path_to_supertux_executable;  
   
   static int busy_handler(void* data, int retry);
   static int select_handler(void* data, int argc, char** argv, char** colNames);
@@ -70,13 +46,17 @@ public:
   static double sparseness(Genome* g);
   void update_sparsenesses();
   
+  static string temp_pop_filename;
+  static string db_filename;
+  
   static int cur_gen;
   
+  static int top_genome_gen_id;
   static int top_genome_id;
   static double top_fitness;
   
-  static bool novelty_search;
-  static bool hyperneat;
+  static double evaluation_time;
+
   
 private:
   // Static for db handler access
@@ -92,13 +72,22 @@ private:
   void save_pop(string filename);
   
   void start_processes();
+  void init_db();
   void update_db();
   void set_fitness_values();
+  void update_gen_info();
   
   Genome start_genome;
   Population pop;
   
   Substrate substrate;
+  
+  static int num_winner_genomes;
+  
+  static float fitness_sum;
+  static float airtime_sum;
+  static float groundtime_sum;
+  static int jump_sum;
   
   static void print_usage();
 };

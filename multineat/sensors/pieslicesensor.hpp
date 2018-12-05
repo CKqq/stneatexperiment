@@ -2,7 +2,6 @@
 #define HEADER_PIESLICESENSOR
 
 #include "sensor.hpp"
-#include "sensormanager.hpp"
 
 class PieSliceSensor : public Sensor {
   
@@ -18,7 +17,7 @@ protected:
 public:
   PieSliceSensor(double angle1, double angle2);
   
-  Vector get_offset2() { return offset2; };
+  Vector get_offset2() { return offset2; }
   
   // Rotates a point by given rad
   static Vector rotate_point(const Vector& point, double rad);

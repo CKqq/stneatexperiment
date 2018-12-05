@@ -5,28 +5,22 @@
 #include "rangefindersensor.hpp"
 #include "depthfindersensor.hpp"
 #include "pieslicesensor.hpp"
+#include "pieslicesensorspecial.hpp"
 
 #include <memory>
 #include <vector>
 #include <iostream>
 
 class PieSliceSensor;
+class PieSliceSensorSpecial;
 
 class SensorManager {
   friend class Experiment;
   friend class PieSliceSensor; // Dirty Workaround, generate Offsets in this class
+  friend class PieSliceSensorSpecial;
   
 private:
-  static int TILE_WIDTH;
-  
-  static int AMOUNT_RANGE_SENSORS;
-  
-  static int AMOUNT_DEPTH_SENSORS;
-  static int SPACING_DEPTH_SENSORS;
-  
-  // This should be an odd number so we get a center/front pie slice
-  static int AMOUNT_PIESLICE_SENSORS;
-  static int RADIUS_PIESLICE_SENSORS;
+
 public:
   SensorManager();
   ~SensorManager();

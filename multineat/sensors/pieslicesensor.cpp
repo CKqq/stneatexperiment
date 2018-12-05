@@ -1,13 +1,14 @@
 #include "pieslicesensor.hpp"
 
 #include <math.h>
+#include "../parameters.hpp"
 
 PieSliceSensor::PieSliceSensor(double angle1, double angle2) : Sensor(0, 0), 
 angle1(angle1 < 0 ? angle1 + 2 * M_PI : angle1),
 angle2(angle2 < 0 ? angle2 + 2 * M_PI : angle2)
 {
-  offset = rotate_point(Vector(SensorManager::RADIUS_PIESLICE_SENSORS, 0), angle1);
-  offset2 = rotate_point(Vector(SensorManager::RADIUS_PIESLICE_SENSORS, 0), angle2);
+  offset = rotate_point(Vector(ExperimentParameters::RADIUS_PIESLICE_SENSORS, 0), angle1);
+  offset2 = rotate_point(Vector(ExperimentParameters::RADIUS_PIESLICE_SENSORS, 0), angle2);
 }
 
 Vector PieSliceSensor::rotate_point(const Vector& point, double rad)

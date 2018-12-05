@@ -26,13 +26,14 @@ if (SQLITE3_FOUND)
 	include_directories(${SQLITE3_INCLUDE_DIRS})
 endif()
 
+include_directories(${root_SOURCE_DIR})
 include_directories(multineat)
 include_directories(multineat/sensors)
 
 
 message( "CMAKE_CXX_FLAGS IS ${CMAKE_CXX_FLAGS}" )
 
-add_executable(stneatexperiment multineat/Substrate.cpp multineat/Parameters.cpp multineat/Utils.cpp multineat/NeuralNetwork.cpp multineat/PhenotypeBehavior.cpp multineat/Genome.cpp multineat/Random.cpp multineat/Innovation.cpp multineat/Species.cpp multineat/Population.cpp experiment.cpp multineat/Behavior.cpp multineat/sensors/depthfindersensor.cpp multineat/sensors/pieslicesensor.cpp multineat/sensors/rangefindersensor.cpp multineat/sensors/sensor.cpp multineat/sensors/sensormanager.cpp)
+add_executable(stneatexperiment multineat/Substrate.cpp multineat/Parameters.cpp multineat/Utils.cpp multineat/NeuralNetwork.cpp multineat/PhenotypeBehavior.cpp multineat/Genome.cpp multineat/Random.cpp multineat/Innovation.cpp multineat/Species.cpp multineat/Population.cpp experiment.cpp multineat/Behavior.cpp multineat/sensors/depthfindersensor.cpp multineat/sensors/pieslicesensor.cpp multineat/sensors/pieslicesensorspecial.cpp multineat/sensors/rangefindersensor.cpp multineat/sensors/sensor.cpp multineat/sensors/sensormanager.cpp parameters.cpp)
 
 target_link_libraries(stneatexperiment ${Boost_LIBRARIES} ${SQLITE3_LIBRARIES})
 
