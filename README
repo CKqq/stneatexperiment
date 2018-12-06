@@ -1,10 +1,15 @@
 This program is used to run experiments with SuperTux + NEAT in parallel using GNU parallel.
+It also supports detailed run statistics in the generated db file.
+
+The sqlite file generated during runs (neat.db) will have one table for each generation, called GEN[i], with i = generation number.
+It includes data for each evaluated genome, including its ID, the achieved fitness and behavior data like the number of jumps the genome did or output quotas for novelty search.
+Also, there will be a table called RUN_INFO which stores statistics about the run with one row per generation. These statistics include the maximum fitness, evaluation time, averages for behavior values, number of genomes which finished the test level etc.
 
 To build, create a folder called "build" in the project's directory. Switch to the folder and call "cmake .." and then "make" to compile.
 Afterwards, create a folder called "bin" inside of "build" and place the contents of the supertuxNEAT project inside. Build just like with this project and you're good to go.
 The final path to the supertux2 executable should look like this: "<stneatexperimentfolder>/build/bin/build/supertux2".
 
-Boost, sqlite3 and GNU Parallel are required to run/compile this project. Supertux itself also has a few dependencies which you can check out in the official docs.
+Boost, sqlite3 and GNU Parallel are required to run/compile this project. Supertux itself also has a few dependencies which you can check out in the official docs/wiki.
 
 Following is a list of available parameters for experiment parameter files:
 
@@ -30,11 +35,13 @@ radiuspieslicesensors <int> | Radius of pieslice sensors
 noveltysearch <1/0> | Use Novelty Search (1) or don't (0, default)
 hyperneat <1/0> | User HyperNEAT (1) or don't (0, default)
 
-regularizejumps <1/0> | fitness = max(0, fitness - [number of jumps]), used to prevent individuals from "cheating" by jumping all the time
+regularizejumps <1/0> | fitness = max(0, fitness - [number of jumps] * 5), used to prevent individuals from "cheating" by jumping all the time
+regularizeairtime <1/0> | fitness = max(0, fitness - [ticks_airtime / ticks_total] * 10), used to penalize high jumps and low groundtime
+rewardgroundtime <1/0> | fitness += [ticks_groundtime / ticks_total] * 20, basically the same as regularizeairtime but with a reward concept for experimental reasons. Note that ticks_airtime + ticks_groundtime = ticks_total
 
 It's recommended to use 5 rangefinder sensors as that's the height Tux can jump up to and an odd number of pie slice sensors so Tux' front is detected properly.
 
-Please note that the noveltysearch and randseed parameters in experiment parameter files override the settings given by console arguments. I've still left the option to set these options via console to ease the usage of shellscripts for automated experiment execution.
+Please note that the noveltysearch, hyperneat and randseed parameters in experiment parameter files override the settings given by console arguments. I've still left the option to set these options via console to ease the usage of shellscripts for automated experiment execution.
 
 Currently known bugs:
 - Novelty Search individuals rarely have an empty behavior (I implemented a workaround so the program doesn't crash)
