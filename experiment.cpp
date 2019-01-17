@@ -108,7 +108,7 @@ void Experiment::run_evolution() {
       pop.InitPhenotypeBehaviorData(behaviors, &archive);
     }
     
-    if (ExperimentParameters::autosave_interval != 0 && i % ExperimentParameters::autosave_interval == 0) {
+    if (!ExperimentParameters::autosave_best && ExperimentParameters::autosave_interval != 0 && i % ExperimentParameters::autosave_interval == 0) {
       std::ostringstream ss;
       ss << "./neat_gen" << i;
       save_pop(ss.str().c_str());
@@ -628,6 +628,11 @@ int Experiment::select_handler(void* data, int argc, char** argv, char** colName
       (*it)->SetFitness((ExperimentParameters::novelty_search) ? sparseness(*it) : fitness);
       (*it)->SetEvaluated();
       if (fitness > top_fitness) {
+	if (ExperimentParameters::autosave_best) {
+	  std::ostringstream ss;
+	  ss << "./neat_gen" << i;
+	  save_pop(ss.str().c_str());
+	}
 	top_fitness = fitness;
 	top_genome_id = id;
 	top_genome_gen_id = cur_gen;
@@ -785,7 +790,9 @@ void Experiment::parse_experiment_parameters()
       ExperimentParameters::using_seed = true;
       ExperimentParameters::seed = (int) d;
     }
-    else if (s == "autosaveinterval")		ExperimentParameters::autosave_interval = (int) d;
+    else if (s == "autosaveinterval")		
+      if (d == "best")				ExperimentParameters::autosave_best = true;
+      else 					ExperimentParameters::autosave_interval = (int) d;
     
     else if (s == "numrangesensors") 		ExperimentParameters::AMOUNT_RANGE_SENSORS = (int) d;
     else if (s == "numdepthsensors") 		ExperimentParameters::AMOUNT_DEPTH_SENSORS = (int) d;
