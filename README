@@ -15,6 +15,8 @@ Following is a list of available parameters for experiment parameter files:
 
 maxgens <int> | Number of generations for which the simulation will run
 
+autosaveinterval <int/best> | int specifies autosave every int generations, best saves each generation in which the top fitness improved
+
 numcores <int> | Number of processes that are to be started, distributed on CPU's cores by GNU parallel
 
 randseed <int> | Seed to be used by MultiNEAT. This will override the seed given by "--seed".
@@ -35,9 +37,9 @@ radiuspieslicesensors <int> | Radius of pieslice sensors
 noveltysearch <1/0> | Use Novelty Search (1) or don't (0, default)
 hyperneat <1/0> | User HyperNEAT (1) or don't (0, default)
 
-regularizejumps <1/0> | fitness = max(0, fitness - [number of jumps] * 5), used to prevent individuals from "cheating" by jumping all the time
+regularizejumps <1/0> | fitness = max(0, fitness - [number of jumps]), used to prevent individuals from "cheating" by jumping all the time
 regularizeairtime <1/0> | fitness = max(0, fitness - [ticks_airtime / ticks_total] * 10), used to penalize high jumps and low groundtime
-rewardgroundtime <1/0> | fitness += [ticks_groundtime / ticks_total] * 20, basically the same as regularizeairtime but with a reward concept for experimental reasons. Note that ticks_airtime + ticks_groundtime = ticks_total
+rewardgrounddist <1/0> | Sets fitness to the total progress to the right that was made on the ground. Basically rewards walking towards the goal
 
 It's recommended to use 5 rangefinder sensors as that's the height Tux can jump up to and an odd number of pie slice sensors so Tux' front is detected properly.
 
