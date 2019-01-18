@@ -15,7 +15,7 @@ Following is a list of available parameters for experiment parameter files:
 
 maxgens <int> | Number of generations for which the simulation will run
 
-autosaveinterval <int/best> | int specifies autosave every int generations, best saves each generation in which the top fitness improved
+autosaveinterval <int> | int specifies autosave every int generations, 0 saves only those generations in which the all time top fitness improved
 
 numcores <int> | Number of processes that are to be started, distributed on CPU's cores by GNU parallel
 
