@@ -51,6 +51,7 @@ public:
   
   static int cur_gen;
   
+  static bool new_top;
   static int top_genome_gen_id;
   static int top_genome_id;
   static double top_fitness;

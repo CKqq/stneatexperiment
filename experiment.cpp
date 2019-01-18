@@ -30,6 +30,7 @@ int Experiment::db_sleeptime = 50;
 string Experiment::path_to_supertux_executable = "./bin/build/supertux2";
 
 int Experiment::cur_gen = 0;
+bool Experiment::new_top = true;
 int Experiment::top_genome_gen_id = 0;
 int Experiment::top_genome_id = 0;
 double Experiment::top_fitness = 0;
@@ -40,6 +41,7 @@ float Experiment::airtime_sum = 0;
 float Experiment::groundtime_sum = 0;
 int Experiment::jump_sum = 0;
 double Experiment::evaluation_time = 0;
+
 
 Parameters Experiment::params;
 
@@ -84,8 +86,10 @@ void Experiment::run_evolution() {
   
   init_db();
   
-  for (int i = 1; i <= ExperimentParameters::max_gens; i++) {    
+  for (int i = 1; i <= ExperimentParameters::max_gens; i++) {      
     std::cout << "Working on generation #" << i << "..." << std::endl;
+    
+    Experiment::new_top = false;
     
     num_winner_genomes = 0;
     
@@ -108,12 +112,6 @@ void Experiment::run_evolution() {
       pop.InitPhenotypeBehaviorData(behaviors, &archive);
     }
     
-    if (!ExperimentParameters::autosave_best && ExperimentParameters::autosave_interval != 0 && i % ExperimentParameters::autosave_interval == 0) {
-      std::ostringstream ss;
-      ss << "./neat_gen" << i;
-      save_pop(ss.str().c_str());
-    }
-    
     // Prepare db file...
     update_db();
     
@@ -128,6 +126,18 @@ void Experiment::run_evolution() {
     std::cout << "Done. Top fitness: " << top_fitness << " by individual #" << top_genome_id << ", generation #" << top_genome_gen_id << std::endl;
     std::cout << "Evaluation time: " << (int) (evaluation_time / 60) << "min" << (int) evaluation_time % 60 << "sec" << std::endl;
     std::cout << num_winner_genomes << " genome(s) out of " << genomes.size() << " finished the level (" << num_winner_genomes  / (double) genomes.size() * 100 << "%)" << std::endl;
+    
+        
+    if (ExperimentParameters::autosave_best && Experiment::new_top) {
+      std::ostringstream ss;
+      ss << "./neat_gen" << cur_gen;
+      save_pop(ss.str().c_str());
+    }
+    else if (!ExperimentParameters::autosave_best && i % ExperimentParameters::autosave_interval == 0) {
+      std::ostringstream ss;
+      ss << "./neat_gen" << cur_gen;
+      save_pop(ss.str().c_str());
+    }
     
     pop.Epoch();
   }
@@ -628,11 +638,8 @@ int Experiment::select_handler(void* data, int argc, char** argv, char** colName
       (*it)->SetFitness((ExperimentParameters::novelty_search) ? sparseness(*it) : fitness);
       (*it)->SetEvaluated();
       if (fitness > top_fitness) {
-	if (ExperimentParameters::autosave_best) {
-	  std::ostringstream ss;
-	  ss << "./neat_gen" << i;
-	  save_pop(ss.str().c_str());
-	}
+	new_top = true;
+	
 	top_fitness = fitness;
 	top_genome_id = id;
 	top_genome_gen_id = cur_gen;
@@ -666,6 +673,7 @@ int Experiment::select_handler_ns(void* data, int argc, char** argv, char** colN
       }
 	
       if (fitness > top_fitness) {
+	new_top = true;
 	top_fitness = fitness;
 	top_genome_id = id;
       }
@@ -791,7 +799,7 @@ void Experiment::parse_experiment_parameters()
       ExperimentParameters::seed = (int) d;
     }
     else if (s == "autosaveinterval")		
-      if (d == "best")				ExperimentParameters::autosave_best = true;
+      if ((int) d == 0)				ExperimentParameters::autosave_best = true;
       else 					ExperimentParameters::autosave_interval = (int) d;
     
     else if (s == "numrangesensors") 		ExperimentParameters::AMOUNT_RANGE_SENSORS = (int) d;
