@@ -379,10 +379,7 @@ double Experiment::sparseness(Genome* g)
 void Experiment::update_sparsenesses()
 {
   for (std::vector<Genome*>::iterator it = genomes.begin(); it != genomes.end(); ++it)
-  {    
-//     std::cout << "Updating sparseness of genome #" << (*it)->GetID() << "..." << std::endl;
-//     double sparseness = Experiment::sparseness(*it);
-    
+  {        
     (*it)->SetFitness(pop.ComputeSparseness(*(*it)));
     (*it)->SetEvaluated();
   }
@@ -668,14 +665,15 @@ int Experiment::select_handler_ns(void* data, int argc, char** argv, char** colN
   for (std::vector<Genome*>::iterator it = genomes.begin(); it != genomes.end(); ++it) {
     if ((*it)->GetID() == id) {
             
-      for (int i = 2; i < 8; i++) {
-	(*it)->m_PhenotypeBehavior->m_Data[0][std::stod(argv[i])];
+      for (int i = 5; i < 11; i++) {
+	(*it)->m_PhenotypeBehavior->m_Data[0][i - 5] = std::stod(argv[i]);
       }
-	
+      
       if (fitness > top_fitness) {
 	new_top = true;
 	top_fitness = fitness;
 	top_genome_id = id;
+	top_genome_gen_id = cur_gen;
       }
       
       break;
@@ -688,8 +686,6 @@ int Experiment::select_handler_ns(void* data, int argc, char** argv, char** colN
   jump_sum += std::stoi(argv[4]);
   
   if (std::stod(argv[11]) > 0) num_winner_genomes++;
-  
-  if (std::stod(argv[8]) > 0) num_winner_genomes++;
   
   return 0;
 }
