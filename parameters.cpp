@@ -29,10 +29,6 @@ int ExperimentParameters::seed = 0;
 int ExperimentParameters::autosave_interval = 0;
 bool ExperimentParameters::autosave_best = false;
 
-int ExperimentParameters::num_range_sensors = 5;
-int ExperimentParameters::num_depth_sensors = 7;
-int ExperimentParameters::num_pieslice_sensors = 7;
-
 int ExperimentParameters::num_hidden_start_neurons = 0;
 
 int ExperimentParameters::num_hidden_start_neurons_cppn = 0;

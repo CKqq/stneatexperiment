@@ -22,10 +22,6 @@ public:
   static int autosave_interval;
   static bool autosave_best;
   
-  static int num_range_sensors;
-  static int num_depth_sensors;
-  static int num_pieslice_sensors;
-  
   static int num_hidden_start_neurons;
   
   static int num_hidden_start_neurons_cppn;

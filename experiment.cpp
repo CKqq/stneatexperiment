@@ -66,10 +66,11 @@ int main(int argc, char **argv) {
 
 
 Experiment::Experiment() : 
-start_genome(0, ExperimentParameters::num_range_sensors + ExperimentParameters::num_depth_sensors + ExperimentParameters::num_pieslice_sensors + 1, ExperimentParameters::num_hidden_start_neurons, 
+start_genome(0, ExperimentParameters::AMOUNT_RANGE_SENSORS + ExperimentParameters::AMOUNT_DEPTH_SENSORS + ExperimentParameters::AMOUNT_PIESLICE_SENSORS * 2 + 1, ExperimentParameters::num_hidden_start_neurons, 
   6, false, UNSIGNED_SIGMOID, UNSIGNED_SIGMOID, 1, params),
   pop(strcmp(ExperimentParameters::pop_filename.c_str(), "") ? 
-  Population(ExperimentParameters::pop_filename.c_str()) : Population(start_genome, params, true, 2.0, (ExperimentParameters::using_seed ? ExperimentParameters::seed : (int) time(0))))
+  Population(ExperimentParameters::pop_filename.c_str()) : Population(start_genome, params, true, 2.0, (ExperimentParameters::using_seed ? ExperimentParameters::seed : (int) time(0)))),
+  total_gen_time(0)
 {
   if (ExperimentParameters::hyperneat) 
   {
@@ -139,7 +140,13 @@ void Experiment::run_evolution() {
       save_pop(ss.str().c_str());
     }
     
+    std::chrono::time_point<std::chrono::high_resolution_clock> start = std::chrono::high_resolution_clock::now();
     pop.Epoch();
+    std::chrono::time_point<std::chrono::high_resolution_clock> finish = std::chrono::high_resolution_clock::now();
+
+    std::chrono::duration<double> elapsed = finish - start;
+    
+    total_gen_time += elapsed.count();
   }
 }
 

@@ -91,6 +91,8 @@ private:
   static int jump_sum;
   
   static void print_usage();
+  
+  double total_gen_time;
 };
 
 #endif
